@@ -1,21 +1,9 @@
-# LLM Providers
+pyTelegramBotAPI
 google-genai
 groq
-
-# Token Math
-tiktoken
-
-# Core Utilities
-python-dotenv
-
-# Web & API (WebSockets)
+huggingface-hub
 fastapi
 uvicorn
-
-# Interfaces
-pyTelegramBotAPI
+tiktoken
+python-dotenv
 rich
-prompt_toolkit
-
-# Testing
-pytest
