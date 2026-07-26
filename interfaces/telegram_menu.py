@@ -1,6 +1,6 @@
 # interfaces/telegram_menu.py
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from cli.constants import SUPPORTED_MODELS
+from constants import SUPPORTED_MODELS
 import config_configure.in_chat_config as in_chat_config
 from queries.conversation_queries import create_conversation
 
