@@ -1,0 +1,20 @@
+# Local SQLite database
+assistant.db
+assistant.db-journal
+assistant.db-wal
+
+# Configuration and secrets
+.env
+.vscode
+
+# Python caching
+__pycache__/
+*.pyc
+.pytest_cache/
+
+#dev files
+agent_con_8.txt
+database_test.py
+test.bat
+clean.bat
+migrate_db.py

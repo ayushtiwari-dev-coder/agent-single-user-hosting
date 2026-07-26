@@ -1,0 +1,21 @@
+# LLM Providers
+google-genai
+groq
+
+# Token Math
+tiktoken
+
+# Core Utilities
+python-dotenv
+
+# Web & API (WebSockets)
+fastapi
+uvicorn
+
+# Interfaces
+pyTelegramBotAPI
+rich
+prompt_toolkit
+
+# Testing
+pytest
