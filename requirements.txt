@@ -7,3 +7,8 @@ uvicorn
 tiktoken
 python-dotenv
 rich
+ddgs
+beautifulsoup4
+requests
+markdown
+xhtml2pdf
