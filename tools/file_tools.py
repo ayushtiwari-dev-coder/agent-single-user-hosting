@@ -44,7 +44,7 @@ from xhtml2pdf import pisa
 
 from tools.core import agent_tool
 from queries.conversation_queries import get_conversation_by_id
-from interfaces.telegram_bot import bot
+
 
 logger = logging.getLogger("tools.pdf_tools")
 
@@ -118,6 +118,7 @@ def generate_pdf(
             if "Telegram Chat " in conv_title:
                 chat_id_str = conv_title.replace("Telegram Chat ", "").strip()
                 chat_id = int(chat_id_str)
+                from interfaces.telegram_bot import bot
 
                 bot.send_document(
                     chat_id=chat_id,
