@@ -1,126 +1,78 @@
 # main.py
-import sys
-import argparse
+import os
+import time
+import threading
+import uvicorn
+from fastapi import FastAPI
+from huggingface_hub import HfApi
 
-# Enforce UTF-8 safely to avoid local system terminal encoding crashes
-if sys.stdout.encoding != "utf-8":
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-    except AttributeError:
-        pass
-
-# Initialize paths and load environment variables
-from utils.path_helper import load_env_file
-
-load_env_file()
-
+from database.connection import DATABASE_PATH, APP_DIR
 from database.table_generator import create_tables
-from cli.menu_flows import run_main_app_loop
+from interfaces.telegram_bot import run_telegram_bot
 
+app = FastAPI(title="Hosted Agent Web Server")
 
-def start_cli():
-    """Boots the standard Terminal CLI interface."""
-    run_main_app_loop()
+# -------------------------------------------------------------------
+# HUGGING FACE DATASET PERSISTENCE
+# -------------------------------------------------------------------
+REPO_ID = os.environ.get("HF_DATASET_ID")
+HF_TOKEN = os.environ.get("HF_TOKEN")
 
+api = HfApi(token=HF_TOKEN) if HF_TOKEN else None
 
-def start_telegram():
-    """Boots the Telegram Long-Polling Bot."""
+def restore_db_on_boot():
+    if not REPO_ID or not api:
+        print("[Notice] HF_DATASET_ID or HF_TOKEN missing. Running in ephemeral storage mode.")
+        return
     try:
-        from interfaces.telegram_bot import run_telegram_bot
-
-        run_telegram_bot()
-    except ImportError as e:
-        print(
-            f"\n[Error] Failed to load Telegram bot. Did you install pyTelegramBotAPI?"
+        os.makedirs(APP_DIR, exist_ok=True)
+        api.hf_hub_download(
+            repo_id=REPO_ID,
+            repo_type="dataset",
+            filename="assistant.db",
+            local_dir=APP_DIR
         )
-        print(f"Details: {e}")
-        sys.exit(1)
-
-
-def start_web():
-    """Boots the FastAPI backend for the React UI."""
-    import uvicorn
-    from fastapi import FastAPI
-    from fastapi.middleware.cors import CORSMiddleware
-    from interfaces.websocket import router as websocket_router
-
-    print("\n[Notice] Starting FastAPI Web Server on ws://localhost:8000...")
-    
-    app = FastAPI(title="Local Agent API")
-    
-    # Add CORS middleware so React (port 5173) can talk to FastAPI (port 8000)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],  # Safe for local development
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-    
-    # Plug in the WebSocket router you already built
-    app.include_router(websocket_router)
-    
-    # Start the server
-    uvicorn.run(app, host="127.0.0.1", port=8000)
-
-
-def main():
-    """Main Entrypoint Router for the Local Workflow Agent."""
-    print("Initializing local assistant database...")
-    try:
-        create_tables()
+        print("[Success] Restored assistant.db from Hugging Face Dataset!")
     except Exception as e:
-        print(f"Fatal: Database setup failed: {e}")
-        sys.exit(1)
+        print(f"[Notice] No existing DB found in dataset (first boot): {e}")
 
-    # 1. Parse Command Line Arguments (For automated background running)
-    parser = argparse.ArgumentParser(description="Launch the Local AI Agent")
-    parser.add_argument(
-        "--mode",
-        choices=["cli", "telegram", "web"],
-        help="Bypass the menu and directly launch a specific interface.",
-    )
-    args = parser.parse_args()
-
-    # If an argument was passed, route directly to it
-    if args.mode == "cli":
-        start_cli()
+def backup_db_loop():
+    if not REPO_ID or not api:
         return
-    elif args.mode == "telegram":
-        start_telegram()
-        return
-    elif args.mode == "web":
-        start_web()
-        return
-
-    # 2. Interactive Startup Menu (If no arguments were passed)
     while True:
-        print("\n" + "=" * 60)
-        print("🤖 LOCAL WORKFLOW AGENT - STARTUP MENU")
-        print("=" * 60)
-        print(" [1] Standard CLI (Terminal)")
-        print(" [2] Telegram Bot (Remote Access)")
-        print(" [3] Web UI (React - Coming Soon)")
-        print(" [4] Exit")
-        print("=" * 60)
+        time.sleep(300) # Sync every 5 minutes
+        if os.path.exists(DATABASE_PATH):
+            try:
+                api.upload_file(
+                    path_or_fileobj=DATABASE_PATH,
+                    path_in_repo="assistant.db",
+                    repo_id=REPO_ID,
+                    repo_type="dataset",
+                    commit_message="Automated SQLite backup"
+                )
+            except Exception as e:
+                print(f"[Backup Error] Failed to sync database: {e}")
 
-        choice = input(" Select interface (1-4): ").strip()
+# -------------------------------------------------------------------
+# FASTAPI HEALTH ENDPOINT (For Keep-Alive Pings)
+# -------------------------------------------------------------------
+@app.get("/")
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "agent": "running"}
 
-        if choice == "1":
-            start_cli()
-            break
-        elif choice == "2":
-            start_telegram()
-            break
-        elif choice == "3":
-            start_web()
-            break
-        elif choice == "4" or choice.lower() in ["exit", "quit"]:
-            print("Exiting...")
-            sys.exit(0)
-        else:
-            print(" Invalid selection. Please choose 1, 2, 3, or 4.")
-
-
+# -------------------------------------------------------------------
+# ENTRYPOINT
+# -------------------------------------------------------------------
 if __name__ == "__main__":
-    main()
+    print("Booting Hosted Agent System...")
+
+    restore_db_on_boot()
+    create_tables()
+
+    threading.Thread(target=backup_db_loop, daemon=True).start()
+    threading.Thread(target=run_telegram_bot, daemon=True).start()
+
+    port = int(os.environ.get("PORT", 10000))
+    print(f"Starting Keep-Alive HTTP Server on port {port}...")
+    uvicorn.run(app, host="0.0.0.0", port=port)
