@@ -43,8 +43,7 @@ import markdown
 from xhtml2pdf import pisa
 
 from tools.core import agent_tool
-from queries.conversation_queries import get_conversation_by_id
-
+from utils.telegram_helpers import send_telegram_document
 
 logger = logging.getLogger("tools.pdf_tools")
 
@@ -54,39 +53,24 @@ def generate_pdf(
     filename: str = "report.pdf",
     conversation_id: int = None
 ) -> str:
-    """
-    Converts markdown text into a beautifully formatted PDF document in memory 
-    and sends it directly to the user in Telegram without writing to disk.
-    """
+    """Converts markdown into a formatted PDF in RAM and sends it directly to Telegram."""
     if not filename.lower().endswith(".pdf"):
         filename += ".pdf"
 
-    # 1. Auto-Sanitize unsupported Unicode characters to prevent PDF crashes
     markdown_content = (
-        markdown_content.replace("—", "-")
-        .replace("–", "-")
-        .replace("“", '"')
-        .replace("”", '"')
-        .replace("‘", "'")
-        .replace("’", "'")
-        .replace("…", "...")
+        markdown_content.replace("—", "-").replace("–", "-")
+        .replace("“", '"').replace("”", '"')
+        .replace("‘", "'").replace("’", "'").replace("…", "...")
     )
 
     try:
-        # 2. Convert Markdown to HTML with table and code support
-        html_body = markdown.markdown(
-            markdown_content, extensions=["tables", "fenced_code"]
-        )
-
-        # 3. Wrap in CSS styling for typography and tables
+        html_body = markdown.markdown(markdown_content, extensions=["tables", "fenced_code"])
         full_html = f"""
         <html>
         <head>
             <style>
                 @page {{ margin: 2cm; }}
                 body {{ font-family: Helvetica, Arial, sans-serif; font-size: 12pt; line-height: 1.6; color: #333333; }}
-                h1, h2, h3 {{ color: #111111; margin-bottom: 10px; }}
-                p {{ margin-bottom: 15px; }}
                 table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
                 th {{ background-color: #f2f2f2; font-weight: bold; text-align: left; border: 1px solid #dddddd; padding: 8px; }}
                 td {{ border: 1px solid #dddddd; padding: 8px; }}
@@ -94,42 +78,30 @@ def generate_pdf(
                 pre {{ background-color: #f4f4f4; padding: 10px; border: 1px solid #dddddd; }}
             </style>
         </head>
-        <body>
-            {html_body}
-        </body>
+        <body>{html_body}</body>
         </html>
         """
 
-        # 4. Render PDF into RAM (BytesIO stream - no disk file)
         pdf_buffer = io.BytesIO()
         pisa_status = pisa.CreatePDF(full_html, dest=pdf_buffer)
 
         if pisa_status.err:
-            return "Error: PDF generation completed with internal formatting errors."
+            return "Error: PDF generation failed due to formatting errors."
 
-        # Reset buffer pointer to the beginning for reading
         pdf_buffer.seek(0)
 
-        # 5. Extract Telegram Chat ID and send document directly
-        if conversation_id:
-            conv = get_conversation_by_id(conversation_id)
-            conv_title = conv.get("title", "") if conv else ""
-            
-            if "Telegram Chat " in conv_title:
-                chat_id_str = conv_title.replace("Telegram Chat ", "").strip()
-                chat_id = int(chat_id_str)
-                from interfaces.telegram_bot import bot
+        # Deliver via generic helper!
+        sent = send_telegram_document(
+            conversation_id=conversation_id,
+            document_obj=pdf_buffer,
+            filename=filename,
+            caption=f"📄 *Generated PDF:* `{filename}`"
+        )
 
-                bot.send_document(
-                    chat_id=chat_id,
-                    document=pdf_buffer,
-                    visible_file_name=filename,
-                    caption=f"📄 *Generated PDF:* `{filename}`"
-                )
-                return f"Success: PDF '{filename}' generated and sent directly to your Telegram chat!"
-
-        return f"Error: PDF generated, but could not determine Telegram chat_id to send it."
+        if sent:
+            return f"Success: PDF '{filename}' generated and sent directly to your Telegram chat!"
+        return f"Error: PDF generated, but failed to deliver via Telegram."
 
     except Exception as e:
-        logger.exception(f"Failed to generate PDF '{filename}': {e}")
+        logger.exception(f"PDF generation error: {e}")
         return f"Error: Failed to generate PDF: {e}"
