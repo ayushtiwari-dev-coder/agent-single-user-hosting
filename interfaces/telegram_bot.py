@@ -6,6 +6,8 @@ import threading
 import json
 from functools import partial
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.apihelper import ApiTelegramException
+
 import utils.config_manager as config_manager
 from engine.agent_engine import AgentEngine
 from managers.approval_manager import wait_for_decision, resolve_decision
@@ -26,7 +28,7 @@ else:
     ALLOWED_USERS = tg_config.get("allowed_user_ids", [])
 
 if not BOT_TOKEN:
-    print("[Error] TELEGRAM_BOT_TOKEN is not set in environment or config.json.")
+    print("[Fatal Error] TELEGRAM_BOT_TOKEN is not set in environment or config.json.")
     exit(1)
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -34,7 +36,6 @@ bot = telebot.TeleBot(BOT_TOKEN)
 def is_authorized(update) -> bool:
     """Security check: Only allow whitelisted Telegram User IDs."""
     if not ALLOWED_USERS:
-        # If no whitelist specified, allow all requests (or log warning)
         return True
         
     user_id = update.from_user.id
@@ -54,7 +55,7 @@ def get_latest_tg_conversation(chat_id: int) -> dict:
     return create_conversation(title=title)
 
 class TelegramStreamBuffer:
-    """Buffers stream chunks and edits a single message in-place without duplicating."""
+    """Buffers stream chunks and edits a single message in-place safely."""
     def __init__(self, chat_id: int):
         self.chat_id = chat_id
         self.msg_id = None
@@ -73,7 +74,7 @@ class TelegramStreamBuffer:
                 self.last_update_time = now
             except Exception:
                 pass
-        # Edit the existing message at most once every 1.5 seconds to prevent rate limits
+        # Edit the existing message at most once every 1.5 seconds
         elif now - self.last_update_time > 1.5:
             try:
                 bot.edit_message_text(
@@ -82,6 +83,12 @@ class TelegramStreamBuffer:
                     message_id=self.msg_id
                 )
                 self.last_update_time = now
+            except ApiTelegramException as e:
+                # Ignore harmless 'message is not modified' Telegram errors
+                if "message is not modified" in str(e).lower():
+                    pass
+                else:
+                    print(f"[Stream Warning] {e}")
             except Exception:
                 pass
 
@@ -103,8 +110,6 @@ def agent_worker_thread(chat_id: int, user_text: str):
         )
 
         bot.send_chat_action(chat_id, "typing")
-        
-        # Instantiate single-message stream buffer
         stream_buffer = TelegramStreamBuffer(chat_id)
 
         def telegram_approval_callback(tool_name: str, tool_args: dict, c_id: int) -> bool:
@@ -129,8 +134,7 @@ def agent_worker_thread(chat_id: int, user_text: str):
             approval_callback=telegram_approval_callback,
         )
 
-        # Final Render: If a streaming message was created, update it to formatted Markdown.
-        # Otherwise, send the final response as a single message.
+        # Final Render Safeguard
         if stream_buffer.msg_id is not None:
             try:
                 bot.edit_message_text(
@@ -139,13 +143,21 @@ def agent_worker_thread(chat_id: int, user_text: str):
                     message_id=stream_buffer.msg_id,
                     parse_mode="Markdown"
                 )
+            except ApiTelegramException as e:
+                # Catch and ignore 'message is not modified' when final_response equals streamed text
+                if "message is not modified" in str(e).lower():
+                    pass
+                else:
+                    try:
+                        bot.edit_message_text(
+                            final_response,
+                            chat_id=chat_id,
+                            message_id=stream_buffer.msg_id
+                        )
+                    except Exception:
+                        pass
             except Exception:
-                # Fallback without Markdown if parsing fails
-                bot.edit_message_text(
-                    final_response,
-                    chat_id=chat_id,
-                    message_id=stream_buffer.msg_id
-                )
+                pass
         else:
             try:
                 bot.send_message(chat_id, final_response, parse_mode="Markdown")
@@ -191,12 +203,15 @@ def handle_approval_query(call):
     if success:
         bot.answer_callback_query(call.id, "Action registered.")
         status_text = "✅ *Action Approved*" if approved else "🚫 *Action Denied*"
-        bot.edit_message_text(
-            text=f"{call.message.text}\n\n{status_text}",
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            parse_mode="Markdown",
-        )
+        try:
+            bot.edit_message_text(
+                text=f"{call.message.text}\n\n{status_text}",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                parse_mode="Markdown",
+            )
+        except Exception:
+            pass
     else:
         bot.answer_callback_query(call.id, "Error: Approval session expired or not found.")
 
