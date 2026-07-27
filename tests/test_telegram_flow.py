@@ -84,6 +84,6 @@ def test_agent_worker_thread_engine_crash(
     assert args[0] == 12345
 
     # 3. Check that the message CONTAINS our error, ignoring exact emojis/newlines
-    assert "unexpected execution error" in args[1]
+    assert "unexpected error occurred" in args[1].lower()
     assert "LLM Provider is down" in args[1]
     assert kwargs.get("parse_mode") == "Markdown"

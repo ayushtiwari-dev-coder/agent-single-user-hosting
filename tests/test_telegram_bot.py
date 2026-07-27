@@ -150,3 +150,77 @@ def test_telegram_approval_callback_generation(
     # Verify it froze the thread
     mock_wait.assert_called_once_with(1, timeout=300)
     assert result is True
+
+from interfaces.telegram_bot import TelegramStreamBuffer
+
+@patch("interfaces.telegram_bot.time.time")
+def test_telegram_stream_buffer_throttling(mock_time, tg_bot_module): # <--- FIXED: Using your fixture
+    """Ensures the stream buffer respects the 1.5s Telegram rate limit."""
+    buffer = tg_bot_module.TelegramStreamBuffer(chat_id=123)
+    
+    # 1. First chunk
+    mock_time.return_value = 100.0
+    mock_sent_msg = MagicMock()
+    mock_sent_msg.message_id = 456
+    tg_bot_module.bot.send_message.return_value = mock_sent_msg
+    
+    buffer.handle_chunk("Hello")
+    tg_bot_module.bot.send_message.assert_called_once_with(123, "Hello")
+    assert buffer.msg_id == 456
+    
+    # 2. Second chunk (Too fast! Only 1 second passed)
+    mock_time.return_value = 101.0 
+    buffer.handle_chunk(" World")
+    tg_bot_module.bot.edit_message_text.assert_not_called()
+    
+    # 3. Third chunk (2 seconds passed. Should edit now!)
+    mock_time.return_value = 102.0 
+    buffer.handle_chunk("!")
+    tg_bot_module.bot.edit_message_text.assert_called_once_with(
+        "Hello World!", chat_id=123, message_id=456
+    )
+
+from telebot.apihelper import ApiTelegramException
+
+from telebot.apihelper import ApiTelegramException
+
+@patch("interfaces.telegram_bot.time.time")
+def test_telegram_stream_buffer_message_not_modified(mock_time, tg_bot_module):
+    """Edge Case: Telegram throws 'message is not modified'. Must be ignored silently."""
+    buffer = tg_bot_module.TelegramStreamBuffer(chat_id=123)
+    buffer.msg_id = 456
+    buffer.full_text = "Same text"
+    
+    mock_time.return_value = 105.0 # Force edit time
+    
+    # FIXED: Pass a proper dictionary as the 3rd argument
+    mock_exception = ApiTelegramException(
+        "editMessageText", 
+        None, 
+        {"ok": False, "error_code": 400, "description": "Bad Request: message is not modified"}
+    )
+    tg_bot_module.bot.edit_message_text.side_effect = mock_exception
+    
+    # This should execute silently and NOT crash
+    buffer.handle_chunk("") 
+    
+    tg_bot_module.bot.edit_message_text.assert_called_once()
+
+@patch("interfaces.telegram_bot.time.time")
+def test_telegram_stream_buffer_fatal_api_error(mock_time, tg_bot_module):
+    """Edge Case: Telegram throws a fatal error (e.g., bot blocked). Must not crash thread."""
+    buffer = tg_bot_module.TelegramStreamBuffer(chat_id=123)
+    buffer.msg_id = 456
+    
+    mock_time.return_value = 105.0 
+    
+    # FIXED: Pass a proper dictionary as the 3rd argument
+    mock_exception = ApiTelegramException(
+        "editMessageText", 
+        None, 
+        {"ok": False, "error_code": 403, "description": "Forbidden: bot was blocked by the user"}
+    )
+    tg_bot_module.bot.edit_message_text.side_effect = mock_exception
+    
+    # This should catch the exception and print a warning, NOT crash
+    buffer.handle_chunk("New text")
