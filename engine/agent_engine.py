@@ -177,7 +177,10 @@ class AgentEngine:
                 continue
 
             else:
-                # 5. Final text response received
-                save_assistant_message(conversation_id, full_text)
-                self._trigger_summary_safely(conversation_id)
-                return full_text
+
+                    if not full_text.strip():
+                        full_text = "Task completed successfully."
+                        
+                    save_assistant_message(conversation_id, full_text)
+                    self._trigger_summary_safely(conversation_id)
+                    return full_text
