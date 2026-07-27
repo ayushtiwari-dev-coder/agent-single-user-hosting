@@ -18,3 +18,4 @@ database_test.py
 test.bat
 clean.bat
 migrate_db.py
+agent_data/
