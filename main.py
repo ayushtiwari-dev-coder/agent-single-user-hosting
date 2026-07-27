@@ -61,18 +61,20 @@ def backup_db_loop():
 def health_check():
     return {"status": "ok", "agent": "running"}
 
-# -------------------------------------------------------------------
-# ENTRYPOINT
-# -------------------------------------------------------------------
 if __name__ == "__main__":
     print("Booting Hosted Agent System...")
-
+    
     restore_db_on_boot()
     create_tables()
-
+    
+    from interfaces.telegram_bot import run_telegram_bot, start_scheduler_loop
+    
     threading.Thread(target=backup_db_loop, daemon=True).start()
     threading.Thread(target=run_telegram_bot, daemon=True).start()
-
+    
+    # Start the Scheduler Loop!
+    threading.Thread(target=start_scheduler_loop, daemon=True).start()
+    
     port = int(os.environ.get("PORT", 10000))
     print(f"Starting Keep-Alive HTTP Server on port {port}...")
     uvicorn.run(app, host="0.0.0.0", port=port)

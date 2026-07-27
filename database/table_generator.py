@@ -119,6 +119,20 @@ def create_tables() -> None:
             FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
         );
         """,
+
+        # 10. Scheduled Tasks Table
+        """
+        CREATE TABLE IF NOT EXISTS scheduled_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL,
+            task_prompt TEXT NOT NULL,
+            execute_at TIMESTAMP NOT NULL,
+            recurrence TEXT DEFAULT 'none', -- e.g., 'none', 'daily', 'twice_daily', 'weekly', 'monthly', '3d'
+            status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'processing', 'completed', 'failed'
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+        );
+        """
     ]
 
     try:
