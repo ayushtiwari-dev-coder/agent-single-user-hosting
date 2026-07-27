@@ -164,3 +164,26 @@ def test_smart_truncate_no_newlines():
     assert len(res) < 2000
     # Ensure it grabbed the head and tail safely
     assert "AAAAA" in res
+
+from unittest.mock import MagicMock
+
+@patch("llm.context_formatter.datetime")
+def test_get_dynamic_system_instruction(mock_datetime):
+    """Ensures the dynamic time injection correctly formats and replaces the placeholder."""
+    from llm.context_formatter import _get_dynamic_system_instruction
+    
+    # Mock the datetime to a fixed point so the test is deterministic
+    mock_now = MagicMock()
+    mock_now.strftime.return_value = "Monday, July 27, 2026 at 08:50 PM IST"
+    mock_datetime.datetime.now.return_value = mock_now
+    
+    # 1. Test with the {current_time} placeholder
+    base_with_placeholder = "The time is {current_time}. Hello."
+    res1 = _get_dynamic_system_instruction(base_with_placeholder)
+    assert res1 == "The time is Monday, July 27, 2026 at 08:50 PM IST. Hello."
+    
+    # 2. Test without the placeholder (Fallback logic)
+    base_without = "Just a normal prompt."
+    res2 = _get_dynamic_system_instruction(base_without)
+    assert "CURRENT DATE AND TIME: Monday, July 27, 2026 at 08:50 PM IST" in res2
+    assert "Just a normal prompt." in res2
