@@ -230,13 +230,16 @@ def execute_scheduled_task(task: dict):
     try:
         conv = get_conversation_by_id(conv_id)
         chat_id = int(conv["title"].replace("Telegram Chat ", "").strip())
+
+        active_conv=get_latest_tg_conversation(chat_id)
+        current_conv_id=active_conv["id"]
         
         bot.send_message(chat_id, f"⏰ *Scheduled Task Triggered:*\n`{prompt}`", parse_mode="Markdown")
         
         system_prompt = f"[SCHEDULED TASK]: {prompt}"
         
         # Call the shared core logic!
-        process_agent_interaction(chat_id, conv_id, system_prompt, source="scheduler")
+        process_agent_interaction(chat_id, current_conv_id, system_prompt, source="scheduler")
         
         # Handle Recurrence
         recurrence = task.get("recurrence", "none")
