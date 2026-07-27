@@ -307,3 +307,27 @@ def test_stream_processor_schizophrenic_tools():
     assert tool_calls[2].id == "call_3"
     assert tool_calls[2].name == "bad_tool"
     assert tool_calls[2].args == {}
+
+def test_process_stream_missing_arguments_key():
+    """Edge Case: LLM requests a tool but omits the arguments payload entirely."""
+    chunks = [
+        StreamChunk(
+            tool_call_deltas=[
+                {
+                    "id": "call_no_args", 
+                    "name": "get_all_scheduled_tasks", 
+                    # Notice "arguments" is completely missing or empty
+                    "arguments": "" 
+                }
+            ]
+        ),
+        StreamChunk(is_finished=True),
+    ]
+    
+    stream = mock_stream_generator(chunks)
+    _, tool_calls, _, _ = process_llm_stream(stream, None)
+    
+    assert len(tool_calls) == 1
+    assert tool_calls[0].name == "get_all_scheduled_tasks"
+    # Must safely default to an empty dictionary without crashing
+    assert tool_calls[0].args == {}

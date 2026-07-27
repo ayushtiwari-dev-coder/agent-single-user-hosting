@@ -124,3 +124,31 @@ def test_start_scheduler_loop(mock_sleep, mock_thread, mock_update, mock_get_due
     mock_update.assert_any_call(1, "processing")
     mock_update.assert_any_call(2, "processing")
     assert mock_thread.call_count == 2
+
+def test_calculate_next_execution_hallucinated_recurrence():
+    """Edge Case: LLM invents a recurrence rule. Must return None safely."""
+    res = calculate_next_execution("2026-07-27T10:00:00", "every_now_and_then")
+    assert res is None
+
+@patch("interfaces.telegram_bot.reschedule_task")
+@patch("interfaces.telegram_bot.update_task_status")
+@patch("interfaces.telegram_bot.process_agent_interaction")
+@patch("interfaces.telegram_bot.bot")
+@patch("interfaces.telegram_bot.get_conversation_by_id")
+@patch("interfaces.telegram_bot.get_latest_tg_conversation")
+def test_execute_scheduled_task_hallucinated_recurrence(
+    mock_get_latest_conv, mock_get_conv, mock_bot, mock_process, mock_update, mock_reschedule, mock_task
+):
+    """Edge Case: If recurrence is invalid, the task runs once and is marked completed."""
+    mock_get_conv.return_value = {"title": "Telegram Chat 12345"}
+    mock_get_latest_conv.return_value = {"id": 1}
+    
+    # Inject hallucinated recurrence
+    mock_task["recurrence"] = "random_garbage"
+    
+    execute_scheduled_task(mock_task)
+    
+    # Because calculate_next_execution returns None, it must NOT reschedule
+    mock_reschedule.assert_not_called()
+    # It MUST mark it as completed so it doesn't run again
+    mock_update.assert_called_once_with(42, "completed")

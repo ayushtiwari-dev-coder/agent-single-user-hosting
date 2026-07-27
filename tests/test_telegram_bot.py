@@ -225,3 +225,24 @@ def test_telegram_stream_buffer_fatal_api_error(mock_time, tg_bot_module):
     # This should catch the exception and print a warning, NOT crash
     buffer.handle_chunk("New text")
 
+@patch("interfaces.telegram_bot.time.time")
+def test_telegram_stream_buffer_429_rate_limit(mock_time, tg_bot_module):
+    """Edge Case: Telegram rate-limits the edit. The buffer must absorb it and continue."""
+    buffer = tg_bot_module.TelegramStreamBuffer(chat_id=123)
+    buffer.msg_id = 456
+    mock_time.return_value = 105.0 
+    
+    # Simulate a 429 Too Many Requests exception
+    mock_exception = ApiTelegramException(
+        "editMessageText", 
+        None, 
+        {"ok": False, "error_code": 429, "description": "Too Many Requests: retry after 3"}
+    )
+    tg_bot_module.bot.edit_message_text.side_effect = mock_exception
+    
+    # This should execute silently, print a warning, and NOT crash
+    buffer.handle_chunk("Rate limited text")
+    
+    # Verify the text was still buffered despite the API failure
+    assert buffer.full_text == "Rate limited text"
+    tg_bot_module.bot.edit_message_text.assert_called_once()

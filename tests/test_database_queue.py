@@ -80,3 +80,33 @@ def test_concurrent_database_writes_through_queue():
     # Verify exact count through the worker
     users = execute_read("SELECT COUNT(*) as total FROM users;", fetch_one=True)
     assert users["total"] == num_threads
+import queue
+from unittest.mock import patch
+import pytest
+import database.helper
+from database.helper import execute_read, execute_write
+
+def test_database_worker_timeout(clean_queue_worker_sandbox):
+    """Edge Case: If the worker thread hangs, the caller must timeout cleanly."""
+    # 1. Sabotage the worker's reply queue to simulate a hung database
+    original_put = database.helper._db_worker.task_queue.put
+    
+    def mock_put(item):
+        # We intercept the task, but we NEVER put a response in the reply_queue
+        pass
+        
+    database.helper._db_worker.task_queue.put = mock_put
+    
+    try:
+        # 2. Execute a read. It should wait 5 seconds, then raise RuntimeError
+        with pytest.raises(RuntimeError, match="Database read timed out"):
+            # We patch the timeout to 0.1s just for the test so we don't wait 5 seconds
+            with patch("database.helper.queue.Queue.get", side_effect=queue.Empty):
+                execute_read("SELECT * FROM users")
+                
+        with pytest.raises(RuntimeError, match="Database write timed out"):
+            with patch("database.helper.queue.Queue.get", side_effect=queue.Empty):
+                execute_write("INSERT INTO users (name, username) VALUES ('A', 'B')")
+    finally:
+        # Restore the original queue so we don't break subsequent tests
+        database.helper._db_worker.task_queue.put = original_put
