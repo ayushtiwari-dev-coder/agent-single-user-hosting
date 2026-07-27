@@ -62,3 +62,12 @@ def update_task_schedule(task_id: int, conversation_id: int, execute_at: str, re
         WHERE id = ? AND conversation_id = ? AND status = 'pending';
     """
     return execute_write(query, (execute_at, recurrence, task_id, conversation_id))
+
+
+def reset_orphaned_tasks() -> None:
+    """
+    Edge Case: If the server restarts while a task is 'processing', it will be stuck forever.
+    This function resets them back to 'pending' on boot.
+    """
+    query = "UPDATE scheduled_tasks SET status = 'pending' WHERE status = 'processing';"
+    execute_write(query)

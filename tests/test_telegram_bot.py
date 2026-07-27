@@ -224,3 +224,4 @@ def test_telegram_stream_buffer_fatal_api_error(mock_time, tg_bot_module):
     
     # This should catch the exception and print a warning, NOT crash
     buffer.handle_chunk("New text")
+

@@ -9,6 +9,8 @@ from huggingface_hub import HfApi
 from database.connection import DATABASE_PATH, APP_DIR
 from database.table_generator import create_tables
 from interfaces.telegram_bot import run_telegram_bot
+from queries.scheduler_queries import reset_orphaned_tasks
+
 
 app = FastAPI(title="Hosted Agent Web Server")
 
@@ -66,6 +68,7 @@ if __name__ == "__main__":
     
     restore_db_on_boot()
     create_tables()
+    reset_orphaned_tasks()
     
     from interfaces.telegram_bot import run_telegram_bot, start_scheduler_loop
     

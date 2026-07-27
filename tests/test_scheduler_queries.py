@@ -133,3 +133,27 @@ def test_update_task_schedule_security(temp_db_sandbox):
     task = get_tasks_by_conversation(conv_id)[0]
     assert task["execute_at"] == "2026-07-29T10:00:00"
     assert task["recurrence"] == "daily"
+
+from queries.scheduler_queries import reset_orphaned_tasks
+
+def test_reset_orphaned_tasks(temp_db_sandbox):
+    """Edge Case: Ensures tasks stuck in 'processing' are reset to 'pending' on boot."""
+    conv_id = temp_db_sandbox
+    
+    # Create two tasks
+    task1 = create_scheduled_task(conv_id, "Task 1", "2026-07-28T10:00:00")
+    task2 = create_scheduled_task(conv_id, "Task 2", "2026-07-28T10:00:00")
+    
+    # Mark task1 as processing (simulating a crash mid-execution)
+    update_task_status(task1, "processing")
+    
+    # Run the boot-up reset function
+    reset_orphaned_tasks()
+    
+    # Fetch all pending tasks
+    pending_tasks = get_tasks_by_conversation(conv_id)
+    
+    # Both tasks should now be pending
+    assert len(pending_tasks) == 2
+    assert pending_tasks[0]["id"] == task1
+    assert pending_tasks[1]["id"] == task2
