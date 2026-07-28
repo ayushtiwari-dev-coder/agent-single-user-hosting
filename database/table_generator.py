@@ -132,7 +132,20 @@ def create_tables() -> None:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
         );
-        """
+        """,
+        # Add this query inside the queries = [...] list in database/table_generator.py:
+
+        """  CREATE TABLE IF NOT EXISTS expenses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount REAL NOT NULL,
+        item TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'General',
+        reason TEXT,
+        expense_date TEXT NOT NULL,
+        created_at TEXT NOT NULL
+        );""",
+         """ CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date); """,
+         """ CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category); """
     ]
 
     try:
