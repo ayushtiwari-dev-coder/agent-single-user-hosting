@@ -12,3 +12,4 @@ beautifulsoup4
 requests
 markdown
 xhtml2pdf
+youtube-transcript-api
